@@ -8,6 +8,7 @@ use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class ProjectController extends Controller
 {
@@ -26,6 +27,7 @@ class ProjectController extends Controller
     public function store(Request $request)
     {
         Log::info($request->all());
+
         $validated = $request->validate([
             'title' => 'required',
             'content' => 'required',
@@ -37,11 +39,12 @@ class ProjectController extends Controller
             'image' => 'required|image|max:2048',
         ]);
 
-        $image = $request->file('image');
-        $image->storeAs('project', $image->hashName(), 'public');
+        $file = $request->file('image');
+
+        $path = $file->storeAs('project', $file->hashName(), 'supabase');
 
         $project = Project::create([
-            'image' => $image->hashName(),
+            'image' => $path,
             'title' => $validated['title'],
             'content' => $validated['content'],
             'bidang' => $validated['bidang'],
@@ -49,11 +52,16 @@ class ProjectController extends Controller
             'demo_link' => $validated['demo_link'] ?? null,
         ]);
 
-
         $project->categories()->sync($validated['category_id']);
 
-        return response()->json(['message' => 'Project berhasil disimpan']);
+        return response()->json([
+            'message' => 'Project berhasil disimpan',
+            'image_path' => $path,
+            // kamu juga bisa generate public URL kalau bucket public
+            // 'image_url' => Storage::disk('supabase')->url($path),
+        ]);
     }
+
 
 
     /**
@@ -85,7 +93,7 @@ class ProjectController extends Controller
 
         if ($request->hasFile('image')) {
             $image = $request->file('image');
-           $image->storeAs('project', $image->hashName(), 'public');
+            $image->storeAs('project', $image->hashName(), 'public');
             $project->image = $image->hashName();
         }
 
