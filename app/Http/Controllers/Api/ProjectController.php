@@ -38,7 +38,7 @@ class ProjectController extends Controller
         ]);
 
         $image = $request->file('image');
-        $image->storeAs('project', $image->hashName());
+        $image->storeAs('project', $image->hashName(), 'public');
 
         $project = Project::create([
             'image' => $image->hashName(),
@@ -85,7 +85,7 @@ class ProjectController extends Controller
 
         if ($request->hasFile('image')) {
             $image = $request->file('image');
-           $image->storeAs('project', $image->hashName());
+           $image->storeAs('project', $image->hashName(), 'public');
             $project->image = $image->hashName();
         }
 
