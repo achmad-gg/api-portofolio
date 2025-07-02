@@ -92,9 +92,17 @@ class ProjectController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
+            // Hapus gambar lama dari Supabase
+            if ($project->image && Storage::disk('supabase')->exists($project->image)) {
+                Storage::disk('supabase')->delete($project->image);
+            }
+
+            // Upload gambar baru
             $image = $request->file('image');
-            $image->storeAs('project', $image->hashName(), 'public');
-            $project->image = $image->hashName();
+            $path = $image->storeAs('project', $image->hashName(), 'supabase');
+
+            // Simpan path baru
+            $project->image = $path;
         }
 
         $project->update([
@@ -103,13 +111,16 @@ class ProjectController extends Controller
             'bidang' => $validated['bidang'],
             'github_link' => $validated['github_link'] ?? null,
             'demo_link' => $validated['demo_link'] ?? null,
-            // 'image' di-set di atas
         ]);
 
         $project->categories()->sync($validated['category_id']);
 
-        return response()->json(['message' => 'Project berhasil diperbarui']);
+        return response()->json([
+            'message' => 'Project berhasil diperbarui',
+            'image_path' => $project->image,
+        ]);
     }
+
 
     /**
      * Remove the specified resource from storage.
@@ -125,8 +136,9 @@ class ProjectController extends Controller
             ], 404);
         }
 
-        if ($project->image && Storage::disk('public')->exists('project/' . $project->image)) {
-            Storage::disk('public')->delete('project/' . $project->image);
+        // Hapus file gambar dari Supabase
+        if ($project->image && Storage::disk('supabase')->exists($project->image)) {
+            Storage::disk('supabase')->delete($project->image);
         }
 
         $project->delete();
@@ -136,4 +148,5 @@ class ProjectController extends Controller
             'message' => 'Project berhasil dihapus',
         ]);
     }
+
 }
