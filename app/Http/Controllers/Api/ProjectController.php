@@ -8,25 +8,18 @@ use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 
 class ProjectController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
         $projects = Project::with('categories')->get();
         return new ProjectResource(true, 'List Data Project', $projects);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-        Log::info($request->all());
+        Log::info('Request received', $request->all());
 
         $validated = $request->validate([
             'title' => 'required',
@@ -40,8 +33,15 @@ class ProjectController extends Controller
         ]);
 
         $file = $request->file('image');
+        $filename = $file->hashName();
+        $path = 'project/' . $filename;
 
-        $path = $file->storeAs('project', $file->hashName(), 'supabase');
+        $success = Storage::disk('supabase')->put($path, file_get_contents($file));
+
+        if (!$success) {
+            Log::error('Gagal upload gambar ke Supabase', ['path' => $path]);
+            return response()->json(['error' => 'Gagal upload gambar'], 500);
+        }
 
         $project = Project::create([
             'image' => $path,
@@ -57,25 +57,16 @@ class ProjectController extends Controller
         return response()->json([
             'message' => 'Project berhasil disimpan',
             'image_path' => $path,
-            // kamu juga bisa generate public URL kalau bucket public
-            // 'image_url' => Storage::disk('supabase')->url($path),
+            // 'image_url' => Storage::disk('supabase')->url($path), // opsional jika bucket public
         ]);
     }
 
-
-
-    /**
-     * Display the specified resource.
-     */
     public function show($id)
     {
         $project = Project::with('categories')->findOrFail($id);
         return new ProjectResource(true, 'Detail Project', $project);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, $id)
     {
         $project = Project::findOrFail($id);
@@ -92,17 +83,23 @@ class ProjectController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            // Hapus gambar lama dari Supabase
+            // Hapus file lama
             if ($project->image && Storage::disk('supabase')->exists($project->image)) {
                 Storage::disk('supabase')->delete($project->image);
             }
 
-            // Upload gambar baru
-            $image = $request->file('image');
-            $path = $image->storeAs('project', $image->hashName(), 'supabase');
+            $newFile = $request->file('image');
+            $filename = $newFile->hashName();
+            $newPath = 'project/' . $filename;
 
-            // Simpan path baru
-            $project->image = $path;
+            $upload = Storage::disk('supabase')->put($newPath, file_get_contents($newFile));
+
+            if (!$upload) {
+                Log::error('Gagal upload gambar baru ke Supabase', ['path' => $newPath]);
+                return response()->json(['error' => 'Gagal upload gambar baru'], 500);
+            }
+
+            $project->image = $newPath;
         }
 
         $project->update([
@@ -121,10 +118,6 @@ class ProjectController extends Controller
         ]);
     }
 
-
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy($id)
     {
         $project = Project::find($id);
@@ -136,7 +129,6 @@ class ProjectController extends Controller
             ], 404);
         }
 
-        // Hapus file gambar dari Supabase
         if ($project->image && Storage::disk('supabase')->exists($project->image)) {
             Storage::disk('supabase')->delete($project->image);
         }
@@ -148,5 +140,4 @@ class ProjectController extends Controller
             'message' => 'Project berhasil dihapus',
         ]);
     }
-
 }
