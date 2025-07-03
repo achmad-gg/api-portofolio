@@ -18,20 +18,26 @@ class ProjectController extends Controller
     }
 
     public function store(Request $request)
-    {
-        Log::info('Request received', $request->all());
+{
+    Log::info('Request received', $request->all());
 
-        $validated = $request->validate([
-            'title' => 'required',
-            'content' => 'required',
-            'bidang' => 'required|in:frontend,backend,fullstack',
-            'github_link' => 'nullable|url',
-            'demo_link' => 'nullable|url',
-            'category_id' => 'required|array',
-            'category_id.*' => 'exists:categories,id',
-            'image' => 'required|image|max:2048',
-        ]);
+    $validated = $request->validate([
+        'title' => 'required',
+        'content' => 'required',
+        'bidang' => 'required|in:frontend,backend,fullstack',
+        'github_link' => 'nullable|url',
+        'demo_link' => 'nullable|url',
+        'category_id' => 'required|array',
+        'category_id.*' => 'exists:categories,id',
+        'image' => 'required|image|max:2048',
+    ]);
 
+    if (!$request->hasFile('image')) {
+        Log::error('File image tidak ditemukan di request');
+        return response()->json(['error' => 'File tidak ditemukan'], 400);
+    }
+
+    try {
         $file = $request->file('image');
         $filename = $file->hashName();
         $path = 'project/' . $filename;
@@ -39,7 +45,7 @@ class ProjectController extends Controller
         $success = Storage::disk('s3')->put($path, file_get_contents($file));
 
         if (!$success) {
-            Log::error('Gagal upload gambar ke supabase', ['path' => $path]);
+            Log::error('Gagal upload gambar ke Supabase', ['path' => $path]);
             return response()->json(['error' => 'Gagal upload gambar'], 500);
         }
 
@@ -59,7 +65,12 @@ class ProjectController extends Controller
             'image_path' => $path,
         ]);
 
+    } catch (\Exception $e) {
+        Log::error('Exception saat upload gambar', ['message' => $e->getMessage()]);
+        return response()->json(['error' => 'Gagal upload gambar'], 500);
     }
+}
+
 
     public function show($id)
     {
