@@ -19,8 +19,6 @@ class ProjectController extends Controller
 
     public function store(Request $request)
     {
-        Log::info('Request received', $request->all());
-
         $validated = $request->validate([
             'title' => 'required',
             'content' => 'required',
@@ -33,12 +31,12 @@ class ProjectController extends Controller
         ]);
 
         $file = $request->file('image');
-        $filename = $file->hashName();
+        $filename = $file->hashName(); // nama acak
         $path = 'project/' . $filename;
 
-        $success = Storage::disk('r2')->put($path, file_get_contents($file));
+        $upload = Storage::disk('r2')->put($path, file_get_contents($file));
 
-        if (!$success) {
+        if (!$upload) {
             Log::error('Gagal upload gambar ke R2', ['path' => $path]);
             return response()->json(['error' => 'Gagal upload gambar'], 500);
         }
@@ -54,17 +52,27 @@ class ProjectController extends Controller
 
         $project->categories()->sync($validated['category_id']);
 
+        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/images/' . $path;
+
         return response()->json([
             'message' => 'Project berhasil disimpan',
             'image_path' => $path,
+            'image_url' => $imageUrl,
+            'data' => new ProjectResource(true, 'Project Baru', $project),
         ]);
-
     }
 
     public function show($id)
     {
         $project = Project::with('categories')->findOrFail($id);
-        return new ProjectResource(true, 'Detail Project', $project);
+
+        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/images/' . $project->image;
+
+        return response()->json([
+            'message' => 'Detail Project',
+            'image_url' => $imageUrl,
+            'data' => new ProjectResource(true, 'Detail Project', $project),
+        ]);
     }
 
     public function update(Request $request, $id)
@@ -83,14 +91,14 @@ class ProjectController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            // Hapus file lama
+            // Hapus gambar lama
             if ($project->image && Storage::disk('r2')->exists($project->image)) {
                 Storage::disk('r2')->delete($project->image);
             }
 
             $newFile = $request->file('image');
-            $filename = $newFile->hashName();
-            $newPath = 'project/' . $filename;
+            $newFilename = $newFile->hashName();
+            $newPath = 'project/' . $newFilename;
 
             $upload = Storage::disk('r2')->put($newPath, file_get_contents($newFile));
 
@@ -112,9 +120,13 @@ class ProjectController extends Controller
 
         $project->categories()->sync($validated['category_id']);
 
+        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/images/' . $project->image;
+
         return response()->json([
             'message' => 'Project berhasil diperbarui',
             'image_path' => $project->image,
+            'image_url' => $imageUrl,
+            'data' => new ProjectResource(true, 'Project Diperbarui', $project),
         ]);
     }
 
