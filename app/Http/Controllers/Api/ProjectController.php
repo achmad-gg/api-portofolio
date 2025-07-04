@@ -31,12 +31,12 @@ class ProjectController extends Controller
         ]);
 
         $file = $request->file('image');
-        $filename = $file->hashName(); // nama acak
+        $filename = $file->hashName();
         $path = 'project/' . $filename;
 
-        $upload = Storage::disk('r2')->put($path, file_get_contents($file));
+        $uploaded = Storage::disk('r2')->put($path, file_get_contents($file));
 
-        if (!$upload) {
+        if (!$uploaded) {
             Log::error('Gagal upload gambar ke R2', ['path' => $path]);
             return response()->json(['error' => 'Gagal upload gambar'], 500);
         }
@@ -52,7 +52,7 @@ class ProjectController extends Controller
 
         $project->categories()->sync($validated['category_id']);
 
-        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/images/' . $path;
+        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/image/' . $path;
 
         return response()->json([
             'message' => 'Project berhasil disimpan',
@@ -65,8 +65,7 @@ class ProjectController extends Controller
     public function show($id)
     {
         $project = Project::with('categories')->findOrFail($id);
-
-        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/images/' . $project->image;
+        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/image/' . $project->image;
 
         return response()->json([
             'message' => 'Detail Project',
@@ -91,7 +90,6 @@ class ProjectController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            // Hapus gambar lama
             if ($project->image && Storage::disk('r2')->exists($project->image)) {
                 Storage::disk('r2')->delete($project->image);
             }
@@ -120,7 +118,7 @@ class ProjectController extends Controller
 
         $project->categories()->sync($validated['category_id']);
 
-        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/images/' . $project->image;
+        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/image/' . $project->image;
 
         return response()->json([
             'message' => 'Project berhasil diperbarui',
