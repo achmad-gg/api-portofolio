@@ -19,7 +19,7 @@ class ProjectController extends Controller
 
     public function store(Request $request)
     {
-        Log::info('Request received for project creation', $request->all());
+        Log::info('Request received', $request->all());
 
         $validated = $request->validate([
             'title' => 'required',
@@ -32,45 +32,33 @@ class ProjectController extends Controller
             'image' => 'required|image|max:2048',
         ]);
 
-        if (!$request->hasFile('image')) {
-            Log::error('File image tidak ditemukan di request');
-            return response()->json(['error' => 'File tidak ditemukan'], 400);
+        $file = $request->file('image');
+        $filename = $file->hashName();
+        $path = 'project/' . $filename;
+
+        $success = Storage::disk('r2')->put($path, file_get_contents($file));
+
+        if (!$success) {
+            Log::error('Gagal upload gambar ke R2', ['path' => $path]);
+            return response()->json(['error' => 'Gagal upload gambar'], 500);
         }
 
-        try {
-            $file = $request->file('image');
-            $path = 'project/' . $file->hashName();
+        $project = Project::create([
+            'image' => $path,
+            'title' => $validated['title'],
+            'content' => $validated['content'],
+            'bidang' => $validated['bidang'],
+            'github_link' => $validated['github_link'] ?? null,
+            'demo_link' => $validated['demo_link'] ?? null,
+        ]);
 
-            $uploadSuccess = Storage::disk('s3')->put($path, file_get_contents($file));
+        $project->categories()->sync($validated['category_id']);
 
-            if (!$uploadSuccess) {
-                Log::error('Gagal upload gambar ke Supabase', ['path' => $path]);
-                return response()->json(['error' => 'Gagal upload gambar'], 500);
-            }
+        return response()->json([
+            'message' => 'Project berhasil disimpan',
+            'image_path' => $path,
+        ]);
 
-            $project = Project::create([
-                'title' => $validated['title'],
-                'content' => $validated['content'],
-                'bidang' => $validated['bidang'],
-                'github_link' => $validated['github_link'] ?? null,
-                'demo_link' => $validated['demo_link'] ?? null,
-                'image' => $path,
-            ]);
-
-            $project->categories()->sync($validated['category_id']);
-
-            $publicUrl = config('filesystems.disks.s3.url') . $path;
-
-            return response()->json([
-                'message' => 'Project berhasil disimpan',
-                'image_path' => $path,
-                'public_url' => $publicUrl,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Exception saat upload gambar', ['message' => $e->getMessage()]);
-            return response()->json(['error' => 'Gagal menyimpan project'], 500);
-        }
     }
 
     public function show($id)
@@ -94,47 +82,40 @@ class ProjectController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
-        try {
-            if ($request->hasFile('image')) {
-                // Hapus gambar lama jika ada
-                if ($project->image && Storage::disk('s3')->exists($project->image)) {
-                    Storage::disk('s3')->delete($project->image);
-                }
-
-                $newFile = $request->file('image');
-                $newPath = 'project/' . $newFile->hashName();
-
-                $upload = Storage::disk('s3')->put($newPath, file_get_contents($newFile));
-
-                if (!$upload) {
-                    Log::error('Gagal upload gambar baru ke Supabase', ['path' => $newPath]);
-                    return response()->json(['error' => 'Gagal upload gambar baru'], 500);
-                }
-
-                $project->image = $newPath;
+        if ($request->hasFile('image')) {
+            // Hapus file lama
+            if ($project->image && Storage::disk('r2')->exists($project->image)) {
+                Storage::disk('r2')->delete($project->image);
             }
 
-            $project->update([
-                'title' => $validated['title'],
-                'content' => $validated['content'],
-                'bidang' => $validated['bidang'],
-                'github_link' => $validated['github_link'] ?? null,
-                'demo_link' => $validated['demo_link'] ?? null,
-            ]);
+            $newFile = $request->file('image');
+            $filename = $newFile->hashName();
+            $newPath = 'project/' . $filename;
 
-            $project->categories()->sync($validated['category_id']);
+            $upload = Storage::disk('r2')->put($newPath, file_get_contents($newFile));
 
-            $publicUrl = $project->image ? config('filesystems.disks.s3.url') . $project->image : null;
+            if (!$upload) {
+                Log::error('Gagal upload gambar baru ke R2', ['path' => $newPath]);
+                return response()->json(['error' => 'Gagal upload gambar baru'], 500);
+            }
 
-            return response()->json([
-                'message' => 'Project berhasil diperbarui',
-                'image_path' => $project->image,
-                'public_url' => $publicUrl,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Gagal update project', ['message' => $e->getMessage()]);
-            return response()->json(['error' => 'Gagal update project'], 500);
+            $project->image = $newPath;
         }
+
+        $project->update([
+            'title' => $validated['title'],
+            'content' => $validated['content'],
+            'bidang' => $validated['bidang'],
+            'github_link' => $validated['github_link'] ?? null,
+            'demo_link' => $validated['demo_link'] ?? null,
+        ]);
+
+        $project->categories()->sync($validated['category_id']);
+
+        return response()->json([
+            'message' => 'Project berhasil diperbarui',
+            'image_path' => $project->image,
+        ]);
     }
 
     public function destroy($id)
@@ -148,23 +129,15 @@ class ProjectController extends Controller
             ], 404);
         }
 
-        try {
-            if ($project->image && Storage::disk('s3')->exists($project->image)) {
-                Storage::disk('s3')->delete($project->image);
-            }
-
-            $project->delete();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Project berhasil dihapus',
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Gagal hapus project', ['message' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Terjadi kesalahan saat menghapus project',
-            ], 500);
+        if ($project->image && Storage::disk('r2')->exists($project->image)) {
+            Storage::disk('r2')->delete($project->image);
         }
+
+        $project->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Project berhasil dihapus',
+        ]);
     }
 }
