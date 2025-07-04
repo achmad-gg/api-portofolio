@@ -69,12 +69,13 @@ return [
         'r2' => [
             'driver' => 's3',
             'key' => env('SUPABASE_KEY'),
-            'secret' => '', // kosongkan
+            'secret' => env('SUPABASE_SECRET'), // wajib tidak kosong!
             'endpoint' => env('SUPABASE_URL') . '/storage/v1/s3',
             'region' => 'auto',
             'bucket' => env('SUPABASE_BUCKET'),
             'use_path_style_endpoint' => true,
         ],
+
 
     ],
 
