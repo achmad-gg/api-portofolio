@@ -6,8 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Log;
+use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 
 class ProjectController extends Controller
 {
@@ -30,33 +29,29 @@ class ProjectController extends Controller
             'image' => 'required|image|max:2048',
         ]);
 
-        $file = $request->file('image');
-        $filename = $file->hashName();
-        $path = 'project/' . $filename;
+        // Upload ke Cloudinary
+        $upload = Cloudinary::upload($request->file('image')->getRealPath(), [
+            'folder' => 'portfolio-projects',
+        ]);
 
-        $uploaded = Storage::disk('r2')->put($path, file_get_contents($file));
+        $imageUrl = $upload->getSecurePath();
+        $publicId = $upload->getPublicId();
 
-        if (!$uploaded) {
-            Log::error('Gagal upload gambar ke R2', ['path' => $path]);
-            return response()->json(['error' => 'Gagal upload gambar'], 500);
-        }
-
+        // Simpan ke database
         $project = Project::create([
-            'image' => $path,
             'title' => $validated['title'],
             'content' => $validated['content'],
             'bidang' => $validated['bidang'],
             'github_link' => $validated['github_link'] ?? null,
             'demo_link' => $validated['demo_link'] ?? null,
+            'image' => $imageUrl,
+            'image_public_id' => $publicId, // opsional untuk delete nanti
         ]);
 
         $project->categories()->sync($validated['category_id']);
 
-        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/image/' . $path;
-
         return response()->json([
             'message' => 'Project berhasil disimpan',
-            'image_path' => $path,
             'image_url' => $imageUrl,
             'data' => new ProjectResource(true, 'Project Baru', $project),
         ]);
@@ -65,11 +60,10 @@ class ProjectController extends Controller
     public function show($id)
     {
         $project = Project::with('categories')->findOrFail($id);
-        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/image/' . $project->image;
 
         return response()->json([
             'message' => 'Detail Project',
-            'image_url' => $imageUrl,
+            'image_url' => $project->image,
             'data' => new ProjectResource(true, 'Detail Project', $project),
         ]);
     }
@@ -89,23 +83,19 @@ class ProjectController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
+        // Jika ada gambar baru
         if ($request->hasFile('image')) {
-            if ($project->image && Storage::disk('r2')->exists($project->image)) {
-                Storage::disk('r2')->delete($project->image);
+            // Hapus gambar lama dari Cloudinary (jika ada public_id)
+            if ($project->image_public_id) {
+                Cloudinary::destroy($project->image_public_id);
             }
 
-            $newFile = $request->file('image');
-            $newFilename = $newFile->hashName();
-            $newPath = 'project/' . $newFilename;
+            $newUpload = Cloudinary::upload($request->file('image')->getRealPath(), [
+                'folder' => 'portfolio-projects',
+            ]);
 
-            $upload = Storage::disk('r2')->put($newPath, file_get_contents($newFile));
-
-            if (!$upload) {
-                Log::error('Gagal upload gambar baru ke R2', ['path' => $newPath]);
-                return response()->json(['error' => 'Gagal upload gambar baru'], 500);
-            }
-
-            $project->image = $newPath;
+            $project->image = $newUpload->getSecurePath();
+            $project->image_public_id = $newUpload->getPublicId();
         }
 
         $project->update([
@@ -118,12 +108,9 @@ class ProjectController extends Controller
 
         $project->categories()->sync($validated['category_id']);
 
-        $imageUrl = env('SUPABASE_URL') . '/storage/v1/object/public/image/' . $project->image;
-
         return response()->json([
             'message' => 'Project berhasil diperbarui',
-            'image_path' => $project->image,
-            'image_url' => $imageUrl,
+            'image_url' => $project->image,
             'data' => new ProjectResource(true, 'Project Diperbarui', $project),
         ]);
     }
@@ -139,8 +126,9 @@ class ProjectController extends Controller
             ], 404);
         }
 
-        if ($project->image && Storage::disk('r2')->exists($project->image)) {
-            Storage::disk('r2')->delete($project->image);
+        // Hapus gambar dari Cloudinary
+        if ($project->image_public_id) {
+            Cloudinary::destroy($project->image_public_id);
         }
 
         $project->delete();
