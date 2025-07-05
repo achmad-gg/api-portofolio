@@ -27,11 +27,5 @@ class Project extends Model
         return $date->format('Y-m-d H:i:s');
     }
 
-    protected $appends = ['image_url'];
-
-    public function getImageUrlAttribute(): string
-    {
-        return Storage::disk('r2')->url($this->image);
-    }
 
 }
